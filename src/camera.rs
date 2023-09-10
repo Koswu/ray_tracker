@@ -11,10 +11,12 @@ pub struct Camera {
 }
 
 impl Camera{
-    pub fn new(look_at: Vector3<f64>, up: Vector3<f64>, position: Vector3<f64>, aspect_ratio: f64, h_fov: f64) -> Self{
+    pub fn new(look_at: Vector3<f64>, up: Vector3<f64>, position: Vector3<f64>, aspect_ratio: f64, h_fov_deg: f64) -> Self{
+        assert!(look_at.dot(&up).abs() < 1e-6); // look_at 和 up 应该正交
+
         let look_at = Unit::new_normalize(look_at);
         let up = Unit::new_normalize(up);
-        Camera { look_at, up, position: position, aspect_ratio: aspect_ratio, h_fov: h_fov }
+        Camera { look_at, up, position: position, aspect_ratio: aspect_ratio, h_fov: h_fov_deg.to_radians() }
     }
     fn get_viewport_size(&self) -> Vector2<f64>{
         // 「底大一级压死人」
@@ -33,7 +35,7 @@ impl Camera{
         // 焦距就是从相机位置到视口的距离
         // BTW, 相机的「位置」其实是一个虚拟的概念，表示反向光线发出的起点
         let viewpoint = self.get_viewport_size();
-        let (u, v) = (viewpoint.x, viewpoint.y);
+        let (u, _) = (viewpoint.x, viewpoint.y);
         u/(self.h_fov/2.0).tan()
     }
     pub fn generate_ray_in_viewport(&self, u: f64, v: f64) -> ReverseRay{
@@ -44,10 +46,12 @@ impl Camera{
         let u = u - 0.5;
         let v = v - 0.5;
         let viewport_center = self.get_viewport_center();
-        let up = self.up;
-        let right = self.get_right();
+        let viewport_size = self.get_viewport_size();
 
-        let vec_in_viewport = viewport_center + u * right.as_ref() + v * up.as_ref();
+        let vp_up_vec = self.up.as_ref() * viewport_size.y;
+        let vp_right_vec = self.get_right().as_ref() * viewport_size.x;
+
+        let vec_in_viewport = viewport_center + u * vp_right_vec + v * vp_up_vec;
         ReverseRay::new(self.position, vec_in_viewport, 10)
     }
 }

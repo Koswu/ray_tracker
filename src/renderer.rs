@@ -2,19 +2,25 @@
 pub mod stub;
 use image::Rgb;
 
-use crate::{scene::Scene, camera::Camera, ray::{ReverseRay, ForwardRay}};
+use crate::{scene::Scene, camera::Camera, ray::{ReverseRay, ForwardRay}, writer::GetColorable};
 
-pub struct Renderer {
-    scene: Scene,
+pub trait CheckIsHitObjectAble{
+    fn check_is_hit_object(&self, ray: &ReverseRay) -> bool;
+}
+
+pub struct Renderer<T:CheckIsHitObjectAble> {
+    scene: T,
     camera: Camera,
 }
 
 
-impl Renderer{
-    pub fn new(scene: Scene, camera: Camera) -> Self{
+impl<T:CheckIsHitObjectAble> Renderer<T>{
+    pub fn new(scene: T, camera: Camera) -> Self{
         Renderer { scene: scene, camera: camera }
     }
+        /*
     fn cal_ray(&self, ray: ReverseRay) -> ForwardRay{
+
         let nearest = self.scene.get_first_hit(&ray);
 
         let mut forward_rays = vec![];
@@ -34,10 +40,18 @@ impl Renderer{
         };
         ray.to_forward(color)
     }
+        */
 
-    pub fn get_color(&self, u: f64, v: f64) -> Rgb<u8>{
+}
+
+impl<T:CheckIsHitObjectAble> GetColorable for Renderer<T>{
+    fn get_color(&self, u: f64, v: f64) -> Rgb<u8>{
         //u , v in [0, 1]
         let ray = self.camera.generate_ray_in_viewport(u, v);
-        self.cal_ray(ray).color
+        if self.scene.check_is_hit_object(&ray){
+            Rgb::<u8>([255, 0, 0])
+        } else {
+            Rgb::<u8>([0, 0, 0])
+        }
     }
 }

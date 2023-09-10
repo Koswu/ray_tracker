@@ -1,9 +1,44 @@
+
+pub mod stub;
 use image::Rgb;
 use nalgebra::Vector3;
 
-use crate::ray::{ReverseRay, ForwardRay};
+use crate::{ray::{ReverseRay, ForwardRay}, renderer::CheckIsHitObjectAble};
 
-type Color = Rgb<u8>;
+pub trait CheckIsHitAble{
+    fn check_is_hit(&self, ray: &ReverseRay) -> bool;
+}
+
+
+pub struct Scene {
+    objects: Vec<Box<dyn CheckIsHitAble>>,
+}
+
+
+impl Scene {
+    pub fn new() -> Self{
+        Scene { objects: vec![]}
+    }
+    pub fn add_object(& mut self, obj: Box<dyn CheckIsHitAble>){
+        self.objects.push(obj)
+    }
+}
+
+impl CheckIsHitObjectAble for Scene{
+    fn check_is_hit_object(&self, ray: &ReverseRay) -> bool{
+        for obj in &self.objects{
+            if obj.check_is_hit(ray){
+                return true
+            }
+        }
+        false
+    }
+}
+
+
+
+
+/*
 
 #[derive(Debug, Clone, Copy)]
 pub struct HitGeometryInfo {
@@ -76,7 +111,7 @@ impl Scene {
     }
 }
 
-
+*/
 
 
 
