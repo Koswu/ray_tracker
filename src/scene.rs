@@ -1,117 +1,79 @@
 
 pub mod stub;
-use image::Rgb;
-use nalgebra::Vector3;
+use std::fmt::Debug;
 
-use crate::{ray::{ReverseRay, ForwardRay}, renderer::CheckIsHitObjectAble};
+use nalgebra::{Vector3, Unit};
 
-pub trait CheckIsHitAble{
-    fn check_is_hit(&self, ray: &ReverseRay) -> bool;
+use crate::colors::PixelInWorldTrait;
+use crate::renderer::Illumination;
+use crate::{ray::RayPath, renderer::PhongScene, light::DotLight, colors::PixelInWorld};
+use crate::types::HitInfo;
+
+
+
+pub trait GetVerticesable{
+    fn get_vertices(&self, position: Vector3<f64>) -> Vec<Vector3<f64>> ; // 用于检查可达性
+}
+
+
+pub trait SceneShape{
+    fn get_hit_info(&self, ray: &RayPath) -> Option<HitInfo>;
 }
 
 
 pub struct Scene {
-    objects: Vec<Box<dyn CheckIsHitAble>>,
+    objects: Vec<Box<dyn SceneShape>>,
+    lights: Vec<DotLight>,
+    ambient_intensity: PixelInWorld,
+    attenuation_coefficient: f64,
 }
 
 
 impl Scene {
-    pub fn new() -> Self{
-        Scene { objects: vec![]}
+    pub fn new(ambient_intensity: PixelInWorld, attenuation_coefficient: f64) -> Self{
+        Scene { objects: vec![], lights: vec![], ambient_intensity, attenuation_coefficient }
     }
-    pub fn add_object(& mut self, obj: Box<dyn CheckIsHitAble>){
+    pub fn add_object(& mut self, obj: Box<dyn SceneShape>){
         self.objects.push(obj)
     }
+
+    pub fn add_light(& mut self, light: DotLight){
+        self.lights.push(light)
+    }
 }
 
-impl CheckIsHitObjectAble for Scene{
-    fn check_is_hit_object(&self, ray: &ReverseRay) -> bool{
-        for obj in &self.objects{
-            if obj.check_is_hit(ray){
-                return true
+impl PhongScene for Scene{
+    fn get_ambient_intensity(&self) -> PixelInWorld {
+        self.ambient_intensity
+    }
+
+    fn get_hit_info(&self, ray: &RayPath) -> Option<HitInfo> {
+        self.objects.iter()
+        .filter_map(|obj| obj.get_hit_info(ray))
+        .fold(None , |hit_info: Option<HitInfo>, another: HitInfo| {
+            match hit_info{
+                None => Some(another),
+                Some(x) => Some(if x.hit_distance < another.hit_distance {x} else{another})
             }
-        }
-        false
+        })    
+    }
+
+    fn get_light_illuminations(&self, target: Vector3<f64>) -> Vec<Illumination> {
+        self.lights.iter().filter_map(|light| {
+            let direction = Unit::new_normalize(target - light.position);
+            let ray = RayPath::new(light.position, direction);
+            let hit_info = self.get_hit_info(&ray).filter(|info| {
+                (info.hit_point - target).norm() < 1e-7
+            });
+            hit_info.map(|info|{
+                let attenuation = 1.0 / (1.0 + self.attenuation_coefficient * info.hit_distance * info.hit_distance);
+                Illumination{
+                    to_target_direction: direction,
+                    intensity: light.color_density.scaling(attenuation),
+                }
+            })
+        }).collect()
     }
 }
-
-
-
-
-/*
-
-#[derive(Debug, Clone, Copy)]
-pub struct HitGeometryInfo {
-    pub position: Vector3<f64>,
-    pub normal: Vector3<f64>,
-    pub to_ray_source_distance: f64,
-}
-
-pub trait Material {
-    fn get_secondary_reverse_rays(&self, incident_ray: &ReverseRay, hit_geometry_info: HitGeometryInfo) -> Vec<ReverseRay>;
-
-    fn get_forward_ray_color(&self, incidnet_rays: Vec<ForwardRay>, hit_geometry_info: HitGeometryInfo) -> Color;
-
-}
-
-pub struct HitInfo {
-    pub geometry_info: HitGeometryInfo,
-    pub material: dyn Material,
-}
-
-pub trait CalHitable {
-    fn cal_hit(&self, incident_ray: &ReverseRay) -> Option<Box<HitInfo>>;
-}
-
-pub struct DotLightSource{
-    pub position: Vector3<f64>,
-    pub color: Rgb<u8>,
-}
-
-pub struct Scene {
-    objects: Vec<Box<dyn CalHitable>>,
-    dot_lights: Vec<DotLightSource>,
-}
-
-impl Scene {
-    pub fn new() -> Self{
-        Scene { objects: vec![], dot_lights: vec![]}
-    }
-    pub fn add_object(& mut self, obj: Box<dyn CalHitable>){
-        self.objects.push(obj)
-    }
-    pub fn get_objects(& self) -> &Vec<Box<dyn CalHitable>>{
-        &self.objects
-    }
-    pub fn add_dot_light(& mut self, light: DotLightSource){
-        self.dot_lights.push(light)
-    }
-    pub fn get_dot_lights(& self) -> &Vec<DotLightSource>{
-        &self.dot_lights
-    }
-    pub fn get_first_hit(&self, ray: &ReverseRay) -> Option<Box<HitInfo>>{
-        let mut hitinfos = vec![];
-        for obj in &self.objects{
-            let hitinfo = obj.cal_hit(&ray);
-            if let Some(hit) = hitinfo {
-                hitinfos.push(hit)
-            }
-        }
-
-        let nearest = hitinfos.into_iter().filter(
-            |hit| 
-            hit.geometry_info.to_ray_source_distance.is_normal()
-        ).min_by(
-            |hit_a, hit_b| 
-            hit_a.geometry_info.to_ray_source_distance.partial_cmp(
-                &hit_b.geometry_info.to_ray_source_distance
-            ).unwrap() 
-        );
-        nearest
-    }
-}
-
-*/
-
 
 
