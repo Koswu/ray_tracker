@@ -1,6 +1,7 @@
 use nalgebra::{Vector2, Vector3, Unit};
 
-use crate::ray::ReverseRay;
+use crate::ray::RayPath;
+
 
 pub struct Camera {
     look_at: Unit<Vector3<f64>>,
@@ -38,11 +39,11 @@ impl Camera{
         let (u, _) = (viewpoint.x, viewpoint.y);
         u/(self.h_fov/2.0).tan()
     }
-    pub fn generate_ray_in_viewport(&self, u: f64, v: f64) -> ReverseRay{
+    pub fn generate_ray_in_viewport(&self, u: f64, v: f64) -> RayPath{
         // 获取经过视口的光线
         // u, v 分别为在两个方向上视口的位置，在 0-1 之间
-        assert!(u >= 0.0 && u <= 1.0);
-        assert!(v >= 0.0 && v <= 1.0);
+        debug_assert!(u >= 0.0 && u <= 1.0);
+        debug_assert!(v >= 0.0 && v <= 1.0);
         let u = u - 0.5;
         let v = v - 0.5;
         let viewport_center = self.get_viewport_center();
@@ -51,7 +52,7 @@ impl Camera{
         let vp_up_vec = self.up.as_ref() * viewport_size.y;
         let vp_right_vec = self.get_right().as_ref() * viewport_size.x;
 
-        let vec_in_viewport = viewport_center + u * vp_right_vec + v * vp_up_vec;
-        ReverseRay::new(self.position, vec_in_viewport, 10)
+        let vec_in_viewport = Unit::new_normalize(viewport_center + u * vp_right_vec + v * vp_up_vec);
+        RayPath::new(self.position, vec_in_viewport)
     }
 }

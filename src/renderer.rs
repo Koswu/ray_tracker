@@ -1,57 +1,109 @@
 
 pub mod stub;
-use image::Rgb;
 
-use crate::{scene::Scene, camera::Camera, ray::{ReverseRay, ForwardRay}, writer::GetColorable};
+use std::{fmt::Debug, ops::Deref};
 
-pub trait CheckIsHitObjectAble{
-    fn check_is_hit_object(&self, ray: &ReverseRay) -> bool;
+use nalgebra::{Vector3, Unit};
+
+use crate::{ray::RayPath, camera::Camera, writer::GetColorable, colors::{PixelInWorld, PixelInWorldTrait}, types::HitInfo};
+
+
+
+
+pub trait PhongMaterial: Debug{
+    fn get_ambient_reflection_intensity(&self, ambient_intensity: PixelInWorld) -> PixelInWorld;
+
+    fn get_diffuse_intensity(&self, source_intensity: PixelInWorld, normal: Unit<Vector3<f64>>, to_light_direction: Unit<Vector3<f64>>) -> PixelInWorld;
+
+    fn get_specular_intensity(&self, souce_intensity: PixelInWorld, to_observer_direction: Unit<Vector3<f64>>, reflection_direction: Unit<Vector3<f64>>) -> PixelInWorld;
 }
 
-pub struct Renderer<T:CheckIsHitObjectAble> {
+
+
+#[derive(Debug)]
+pub struct Illumination{
+    pub to_target_direction: Unit<Vector3<f64>>,
+    pub intensity: PixelInWorld,
+}
+
+
+
+pub trait PhongScene{ 
+
+    fn get_hit_info(&self, ray: &RayPath) -> Option<HitInfo>;
+
+    fn get_light_illuminations(&self, target: Vector3<f64>) -> Vec<Illumination>;
+
+    fn get_ambient_intensity(&self) -> PixelInWorld;
+}
+
+
+pub struct Renderer<T: PhongScene>{
     scene: T,
     camera: Camera,
 }
 
 
-impl<T:CheckIsHitObjectAble> Renderer<T>{
+impl <T: PhongScene>Renderer<T>{
     pub fn new(scene: T, camera: Camera) -> Self{
-        Renderer { scene: scene, camera: camera }
+        Renderer { scene, camera }
     }
-        /*
-    fn cal_ray(&self, ray: ReverseRay) -> ForwardRay{
+    fn get_ambient_intensity(&self, hit_info: &HitInfo) -> PixelInWorld {
+        hit_info.material.get_ambient_reflection_intensity(self.scene.get_ambient_intensity())
+    }
+    fn get_diffuse_intensity(&self, illuminations: &[Illumination], hit_info: &HitInfo) -> PixelInWorld{
+        illuminations.iter().fold(
+            PixelInWorld::BLACK, |color, illumination| 
+            color.mix(
+            &hit_info.material.get_diffuse_intensity(
+                illumination.intensity, 
+                hit_info.hit_normal, 
+                -illumination.to_target_direction)
+            )
+        )
 
-        let nearest = self.scene.get_first_hit(&ray);
-
-        let mut forward_rays = vec![];
-
-
-        let color = match nearest {
-            Some(nearest) => {
-                let next_rays = nearest.material.get_secondary_reverse_rays(&ray, nearest.geometry_info);
-                for next_ray in next_rays{
-                    forward_rays.push(self.cal_ray(next_ray));
-                }
-                nearest.material.get_forward_ray_color(forward_rays, nearest.geometry_info)
+    }
+    fn get_specular_intensity(&self, illuminations: &[Illumination], hit_info: &HitInfo, ray: &RayPath) -> PixelInWorld{
+        illuminations.iter().fold(
+            PixelInWorld::BLACK, |color, illumination| {
+                let n = hit_info.hit_normal.deref();
+                let l = -illumination.to_target_direction.deref();
+                let reflection_direction = 2.0*(n.dot(&l))*n - l;
+                let res = hit_info.material.get_specular_intensity(
+                        illumination.intensity, 
+                        -ray.direction, 
+                        Unit::new_normalize(reflection_direction),
+                );
+                //println!("res = {:?}", res);
+                color.mix(
+                    &res
+                )
             }
-            None => {
-                Rgb::<u8>([0, 0, 0])
-            }
+        )
+
+    }
+
+    pub fn get_intensity(&self, ray: &RayPath) -> PixelInWorld{
+        // 使用 Phong 光照模型，将光对物体的影响分为三类：环境光、漫反射光、高光
+        let black_color = PixelInWorld::BLACK;
+        let hit_info = self.scene.get_hit_info(ray);
+        let hit_info = match hit_info {
+            Some(value) => value,
+            None => return black_color,
         };
-        ray.to_forward(color)
+        let illuminations : Vec<Illumination> = self.scene.get_light_illuminations(hit_info.hit_point);
+
+        let i_ambient = self.get_ambient_intensity(&hit_info);
+        let i_diffuse = self.get_diffuse_intensity(&illuminations, &hit_info);
+        let i_specular = self.get_specular_intensity(&illuminations, &hit_info, ray);
+
+        i_ambient.mix(&i_diffuse).mix(&i_specular)
     }
-        */
 
 }
 
-impl<T:CheckIsHitObjectAble> GetColorable for Renderer<T>{
-    fn get_color(&self, u: f64, v: f64) -> Rgb<u8>{
-        //u , v in [0, 1]
-        let ray = self.camera.generate_ray_in_viewport(u, v);
-        if self.scene.check_is_hit_object(&ray){
-            Rgb::<u8>([255, 0, 0])
-        } else {
-            Rgb::<u8>([0, 0, 0])
-        }
+impl <T:PhongScene>GetColorable for Renderer<T> {
+    fn get_color(&self, u: f64, v: f64) -> PixelInWorld {
+        self.get_intensity(&self.camera.generate_ray_in_viewport(u, v))
     }
 }
